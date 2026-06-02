@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KLASK Magnet Tester</title>
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0ede8;
+    --border: rgba(0,0,0,0.12);
+    --text: #1a1a18;
+    --text2: #6b6b67;
+    --teal: #1D9E75;
+    --teal-light: #E1F5EE;
+    --teal-dark: #085041;
+    --purple: #534AB7;
+    --purple-light: #EEEDFE;
+    --purple-dark: #26215C;
+    --coral: #D85A30;
+    --coral-light: #FAECE7;
+    --amber: #BA7517;
+    --amber-light: #FAEEDA;
+    --red: #E24B4A;
+    --red-light: #FCEBEB;
+    --radius: 10px;
+    --radius-lg: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a;
+      --surface: #282825;
+      --surface2: #323230;
+      --border: rgba(255,255,255,0.12);
+      --text: #e8e6e0;
+      --text2: #9a9994;
+      --teal-light: #04342C;
+      --purple-light: #26215C;
+      --coral-light: #4A1B0C;
+      --amber-light: #412402;
+      --red-light: #501313;
+      --teal-dark: #9FE1CB;
+      --purple-dark: #CECBF6;
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { font-size: 14px; color: var(--text2); margin-bottom: 24px; }
+
+  /* ── Connection bar ── */
+  .conn-bar {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #ccc; flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .dot.connected { background: var(--teal); }
+  .dot.error { background: var(--red); }
+  #conn-label { font-size: 14px; color: var(--text2); flex: 1; }
+  button {
+    font-size: 13px; font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 0.5px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  button:hover { background: var(--border); }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-primary {
+    background: var(--purple);
+    color: #fff;
+    border-color: transparent;
+  }
+  .btn-primary:hover { background: var(--purple-dark); }
+  .btn-teal {
+    background: var(--teal);
+    color: #fff;
+    border-color: transparent;
+  }
+  .btn-teal:hover { background: var(--teal-dark); }
+  .btn-danger {
+    background: var(--red-light);
+    color: var(--red);
+    border-color: var(--red);
+  }
+
+  /* ── Metric cards ── */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+  }
+  .card-label {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 6px;
+    letter-spacing: 0.03em;
+  }
+  .card-value {
+    font-size: 26px;
+    font-weight: 500;
+    letter-spacing: -0.5px;
+  }
+  .card-unit { font-size: 14px; color: var(--text2); margin-left: 3px; }
+  .card.highlight { background: var(--purple-light); border-color: var(--purple); }
+  .card.highlight .card-value { color: var(--purple-dark); }
+
+  /* ── Gauge ── */
+  .gauge-wrap {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .gauge-title { font-size: 14px; color: var(--text2); margin-bottom: 16px; }
+  .gauge-bar-bg {
+    height: 24px;
+    background: var(--surface2);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+  }
+  .gauge-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 12px;
+    background: linear-gradient(90deg, var(--teal) 0%, var(--purple) 60%, var(--coral) 100%);
+    transition: width 0.1s ease;
+  }
+  .gauge-labels {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--text2); margin-top: 6px;
+  }
+
+  /* ── Chart ── */
+  .chart-wrap {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .chart-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px;
+  }
+  .chart-title { font-size: 14px; font-weight: 500; }
+  canvas#chart { width: 100% !important; height: 200px !important; }
+
+  /* ── Strikers comparison ── */
+  .comparison {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .comp-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px;
+  }
+  .comp-title { font-size: 14px; font-weight: 500; }
+  .striker-list { display: flex; flex-direction: column; gap: 10px; }
+  .striker-row {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .striker-name { font-size: 13px; min-width: 90px; color: var(--text2); }
+  .striker-bar-bg {
+    flex: 1; height: 18px;
+    background: var(--surface2);
+    border-radius: 9px; overflow: hidden;
+  }
+  .striker-bar {
+    height: 100%;
+    border-radius: 9px;
+    background: var(--teal);
+    transition: width 0.4s ease;
+  }
+  .striker-bar.best { background: var(--purple); }
+  .striker-val { font-size: 13px; font-weight: 500; min-width: 60px; text-align: right; }
+  .striker-badge {
+    font-size: 11px; font-weight: 500;
+    background: var(--purple-light);
+    color: var(--purple-dark);
+    padding: 2px 8px; border-radius: 6px;
+    min-width: 40px; text-align: center;
+  }
+
+  /* ── Calibration ── */
+  .cal-section {
+    background: var(--amber-light);
+    border: 0.5px solid var(--amber);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  .cal-icon { font-size: 22px; }
+  .cal-text { flex: 1; }
+  .cal-text strong { font-size: 14px; font-weight: 500; display: block; margin-bottom: 2px; }
+  .cal-text span { font-size: 13px; color: var(--text2); }
+
+  /* ── Log ── */
+  .log-wrap {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px;
+    margin-bottom: 20px;
+  }
+  .log-header { font-size: 13px; color: var(--text2); margin-bottom: 8px; }
+  #log {
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--text2);
+    height: 100px;
+    overflow-y: auto;
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  /* ── Striker save input ── */
+  .save-row {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .save-row input {
+    flex: 1; min-width: 140px;
+    font-size: 13px;
+    padding: 8px 12px;
+    border: 0.5px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    color: var(--text);
+    outline: none;
+  }
+  .save-row input:focus { border-color: var(--purple); }
+
+  .no-serial {
+    background: var(--coral-light);
+    border: 0.5px solid var(--coral);
+    border-radius: var(--radius-lg);
+    padding: 14px 18px;
+    font-size: 14px;
+    margin-bottom: 20px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🧲 KLASK Magnet Tester</h1>
+  <p class="subtitle">TMAG5273 · RP2040 Zero · Welcher Striker hat den stärksten Magneten?</p>
+
+  <div class="no-serial" id="no-serial">
+    ⚠️ Dein Browser unterstützt die <strong>Web Serial API</strong> nicht.
+    Bitte Chrome oder Edge verwenden (ab Version 89).
+  </div>
+
+  <!-- Connection -->
+  <div class="conn-bar">
+    <div class="dot" id="dot"></div>
+    <span id="conn-label">Nicht verbunden</span>
+    <button class="btn-primary" id="btn-connect">Verbinden</button>
+    <button id="btn-disconnect" disabled>Trennen</button>
+  </div>
+
+  <!-- Calibration -->
+  <div class="cal-section">
+    <div class="cal-icon">⚖️</div>
+    <div class="cal-text">
+      <strong>Kalibrierung</strong>
+      <span>Sensor ohne Magnet positionieren, dann kalibrieren (setzt Nullpunkt)</span>
+    </div>
+    <button class="btn-teal" id="btn-cal" disabled>Kalibrieren</button>
+    <button id="btn-reset-cal" disabled>Reset</button>
+  </div>
+
+  <!-- Metrics -->
+  <div class="metrics">
+    <div class="card"><div class="card-label">Bx</div><div class="card-value" id="val-bx">–<span class="card-unit">mT</span></div></div>
+    <div class="card"><div class="card-label">By</div><div class="card-value" id="val-by">–<span class="card-unit">mT</span></div></div>
+    <div class="card"><div class="card-label">Bz</div><div class="card-value" id="val-bz">–<span class="card-unit">mT</span></div></div>
+    <div class="card highlight"><div class="card-label">|B| Betrag</div><div class="card-value" id="val-mag">–<span class="card-unit">mT</span></div></div>
+    <div class="card"><div class="card-label">Temperatur</div><div class="card-value" id="val-temp">–<span class="card-unit">°C</span></div></div>
+  </div>
+
+  <!-- Gauge -->
+  <div class="gauge-wrap">
+    <div class="gauge-title">Feldstärke |B| (0 – 80 mT)</div>
+    <div class="gauge-bar-bg"><div class="gauge-bar" id="gauge"></div></div>
+    <div class="gauge-labels"><span>0 mT</span><span>20 mT</span><span>40 mT</span><span>60 mT</span><span>80 mT</span></div>
+  </div>
+
+  <!-- Chart -->
+  <div class="chart-wrap">
+    <div class="chart-header">
+      <span class="chart-title">Verlauf |B|</span>
+      <button id="btn-clear-chart" style="font-size:12px; padding:5px 10px;">Löschen</button>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <!-- Striker save -->
+  <div class="comparison">
+    <div class="comp-header">
+      <span class="comp-title">Striker Vergleich</span>
+      <button id="btn-clear-strikers" style="font-size:12px; padding:5px 10px;">Liste leeren</button>
+    </div>
+    <div class="save-row">
+      <input type="text" id="striker-name" placeholder="Striker-Name (z.B. Rot, Blau, #3…)" maxlength="30">
+      <button class="btn-primary" id="btn-save" disabled>Aktuellen Wert speichern</button>
+    </div>
+    <div class="striker-list" id="striker-list" style="margin-top: 16px;">
+      <span style="font-size:13px; color: var(--text2);">Noch keine Messungen gespeichert.</span>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="log-wrap">
+    <div class="log-header">Serial Log</div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const MAX_POINTS = 200;
+
+let port = null;
+let reader = null;
+let readLoop = null;
+let currentMag = null;
+let strikers = [];
+
+const dot       = document.getElementById('dot');
+const connLabel = document.getElementById('conn-label');
+const btnConnect    = document.getElementById('btn-connect');
+const btnDisconnect = document.getElementById('btn-disconnect');
+const btnCal     = document.getElementById('btn-cal');
+const btnResetCal = document.getElementById('btn-reset-cal');
+const btnSave    = document.getElementById('btn-save');
+const btnClearChart = document.getElementById('btn-clear-chart');
+const btnClearStrikers = document.getElementById('btn-clear-strikers');
+const logEl     = document.getElementById('log');
+
+function setConnected(on) {
+  dot.className = 'dot' + (on ? ' connected' : '');
+  connLabel.textContent = on ? 'Verbunden' : 'Nicht verbunden';
+  btnConnect.disabled = on;
+  btnDisconnect.disabled = !on;
+  btnCal.disabled = !on;
+  btnResetCal.disabled = !on;
+  btnSave.disabled = !on;
+}
+
+function addLog(msg) {
+  const d = document.createElement('div');
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+  if (logEl.children.length > 100) logEl.removeChild(logEl.firstChild);
+}
+
+// ── Chart setup ──────────────────────────────────────────────────────────────
+const ctx = document.getElementById('chart').getContext('2d');
+const chartData = {
+  labels: [],
+  datasets: [
+    { label: '|B| mT', data: [], borderColor: '#534AB7', borderWidth: 1.5,
+      pointRadius: 0, tension: 0.3, fill: true,
+      backgroundColor: 'rgba(83,74,183,0.08)' },
+    { label: 'Bx',     data: [], borderColor: '#1D9E75', borderWidth: 1,
+      pointRadius: 0, tension: 0.3, fill: false },
+    { label: 'By',     data: [], borderColor: '#D85A30', borderWidth: 1,
+      pointRadius: 0, tension: 0.3, fill: false },
+    { label: 'Bz',     data: [], borderColor: '#BA7517', borderWidth: 1,
+      pointRadius: 0, tension: 0.3, fill: false },
+  ]
+};
+
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: chartData,
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { font: { size: 12 }, boxWidth: 16, padding: 12 } } },
+    scales: {
+      x: { display: false },
+      y: {
+        grid: { color: 'rgba(128,128,128,0.1)' },
+        ticks: { font: { size: 11 }, callback: v => v.toFixed(1) + ' mT' }
+      }
+    }
+  }
+});
+
+btnClearChart.onclick = () => {
+  chartData.labels = [];
+  chartData.datasets.forEach(d => d.data = []);
+  chart.update('none');
+};
+
+function pushChart(bx, by, bz, mag) {
+  const t = new Date().toLocaleTimeString();
+  chartData.labels.push(t);
+  chartData.datasets[0].data.push(mag);
+  chartData.datasets[1].data.push(bx);
+  chartData.datasets[2].data.push(by);
+  chartData.datasets[3].data.push(bz);
+  if (chartData.labels.length > MAX_POINTS) {
+    chartData.labels.shift();
+    chartData.datasets.forEach(d => d.data.shift());
+  }
+  chart.update('none');
+}
+
+// ── Update UI ─────────────────────────────────────────────────────────────────
+function updateMetrics(data) {
+  const fmt = v => v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2);
+  document.getElementById('val-bx').innerHTML   = `${fmt(data.bx)}<span class="card-unit">mT</span>`;
+  document.getElementById('val-by').innerHTML   = `${fmt(data.by)}<span class="card-unit">mT</span>`;
+  document.getElementById('val-bz').innerHTML   = `${fmt(data.bz)}<span class="card-unit">mT</span>`;
+  document.getElementById('val-mag').innerHTML  = `${data.magnitude.toFixed(2)}<span class="card-unit">mT</span>`;
+  document.getElementById('val-temp').innerHTML = `${data.temp.toFixed(1)}<span class="card-unit">°C</span>`;
+
+  const pct = Math.min(100, (data.magnitude / 80) * 100);
+  document.getElementById('gauge').style.width = pct + '%';
+
+  currentMag = data.magnitude;
+  pushChart(data.bx, data.by, data.bz, data.magnitude);
+}
+
+// ── Striker comparison ────────────────────────────────────────────────────────
+function renderStrikers() {
+  const list = document.getElementById('striker-list');
+  if (strikers.length === 0) {
+    list.innerHTML = '<span style="font-size:13px; color: var(--text2);">Noch keine Messungen gespeichert.</span>';
+    return;
+  }
+  const maxVal = Math.max(...strikers.map(s => s.val));
+  list.innerHTML = '';
+  const sorted = [...strikers].sort((a, b) => b.val - a.val);
+  sorted.forEach((s, i) => {
+    const pct = (s.val / maxVal * 100).toFixed(1);
+    const isBest = i === 0;
+    const row = document.createElement('div');
+    row.className = 'striker-row';
+    row.innerHTML = `
+      <span class="striker-name">${escHtml(s.name)}</span>
+      <div class="striker-bar-bg">
+        <div class="striker-bar ${isBest ? 'best' : ''}" style="width:${pct}%"></div>
+      </div>
+      <span class="striker-val">${s.val.toFixed(2)} mT</span>
+      <span class="striker-badge">${isBest ? '🏆 Best' : '#' + (i+1)}</span>
+      <button onclick="removeStriker(${s.id})" style="padding:4px 8px; font-size:12px;" title="Entfernen">✕</button>
+    `;
+    list.appendChild(row);
+  });
+}
+
+let nextId = 0;
+function removeStriker(id) {
+  strikers = strikers.filter(s => s.id !== id);
+  renderStrikers();
+}
+
+btnSave.onclick = () => {
+  if (currentMag === null) return;
+  const name = document.getElementById('striker-name').value.trim() || `Striker ${strikers.length + 1}`;
+  strikers.push({ id: nextId++, name, val: currentMag });
+  document.getElementById('striker-name').value = '';
+  renderStrikers();
+  addLog(`Gespeichert: ${name} = ${currentMag.toFixed(2)} mT`);
+};
+
+btnClearStrikers.onclick = () => { strikers = []; renderStrikers(); };
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Serial ────────────────────────────────────────────────────────────────────
+if (!navigator.serial) {
+  document.getElementById('no-serial').style.display = 'block';
+  btnConnect.disabled = true;
+}
+
+btnConnect.onclick = async () => {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    setConnected(true);
+    addLog('Port geöffnet.');
+    startReading();
+  } catch (e) {
+    addLog('Verbindung fehlgeschlagen: ' + e.message);
+    dot.className = 'dot error';
+  }
+};
+
+btnDisconnect.onclick = async () => {
+  try {
+    if (reader) { await reader.cancel(); reader = null; }
+    if (port) { await port.close(); port = null; }
+  } catch {}
+  setConnected(false);
+  addLog('Getrennt.');
+};
+
+async function sendCommand(cmd) {
+  if (!port || !port.writable) return;
+  const writer = port.writable.getWriter();
+  await writer.write(new TextEncoder().encode(cmd + '\n'));
+  writer.releaseLock();
+}
+
+btnCal.onclick = () => { sendCommand('CALIBRATE'); addLog('Kalibrierung gesendet…'); };
+btnResetCal.onclick = () => { sendCommand('RESET_CAL'); addLog('Kalibrierung zurückgesetzt.'); };
+
+async function startReading() {
+  let buf = '';
+  while (port && port.readable) {
+    try {
+      reader = port.readable.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += new TextDecoder().decode(value);
+        let nl;
+        while ((nl = buf.indexOf('\n')) !== -1) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.bx !== undefined) {
+              updateMetrics(data);
+            } else {
+              addLog(JSON.stringify(data));
+            }
+          } catch {
+            addLog(line);
+          }
+        }
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') addLog('Lesefehler: ' + e.message);
+      break;
+    } finally {
+      try { reader.releaseLock(); } catch {}
+    }
+  }
+}
+</script>
+</body>
+</html>
