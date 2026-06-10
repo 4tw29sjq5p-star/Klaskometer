@@ -35,9 +35,20 @@ uint8_t  g_screen          = 0;   // 0 = Live, 1 = Strikers
 uint32_t g_screen_time     = 0;
 uint32_t g_cal_flash_until = 0;
 
-TFT_eSPI  tft;
-WebServer server(80);
-TMAG5273  sensor;
+TFT_eSPI    tft;
+TFT_eSprite spr = TFT_eSprite(&tft);  // off-screen frame buffer (flicker-free)
+bool        g_useSprite = false;      // true once the sprite buffer is allocated
+WebServer   server(80);
+TMAG5273    sensor;
+
+// Render the active screen into any graphics target (screen or sprite).
+// sc: 0 = calibration confirm, 1 = strikers, 2 = live.
+template <class GFX>
+void renderScreen(GFX& g, int sc) {
+    if      (sc == 0) drawCalConfirm(g, off_x, off_y, off_z);
+    else if (sc == 1) drawStrikers(g, strikers, strikerCount);
+    else              drawLive(g, g_data, g_peak);
+}
 
 // ─── Sensor ────────────────────────────────────────────────────────────────
 bool initSensor() {
@@ -199,7 +210,16 @@ void setup() {
 
     tft.init();
     tft.setRotation(3);   // landscape 180°: 320 x 172
-    drawBoot(tft);         // fills screen + 1.8 s delay inside
+
+    // Allocate the off-screen frame buffer (320x172x16bpp ≈ 110 KB).
+    // Done before WiFi so the heap is clean and contiguous. If it fails we
+    // fall back to drawing directly (with the old flicker).
+    spr.setColorDepth(16);
+    g_useSprite = (spr.createSprite(LCD_W, LCD_H) != nullptr);
+    spr.setTextWrap(false);
+    Serial.printf("[BOOT] frame buffer %s\n", g_useSprite ? "ok" : "FAILED (low RAM)");
+
+    drawBoot(tft);         // fills screen + 1.8 s delay inside (direct to screen)
 
     Serial.println("[BOOT] sensor init...");
     g_sensor_ok = initSensor();
@@ -257,23 +277,26 @@ void loop() {
 
     if (now - lastDisplay > 250) {
         lastDisplay = now;
+
+        // Decide which screen to show and handle the auto-cycle transitions.
+        int sc;
         if (now < g_cal_flash_until) {
-            // Show calibration confirmation for 2 s after calibrate()
-            drawCalConfirm(tft, off_x, off_y, off_z);
+            sc = 0;  // calibration confirmation for 2 s after calibrate()
         } else if (g_screen == 1 && strikerCount > 0) {
-            // Striker screen: show for 4 s then back to Live
-            if (now - g_screen_time > 4000) {
-                g_screen = 0;
-                g_screen_time = now;
-            }
-            drawStrikers(tft, strikers, strikerCount);
+            if (now - g_screen_time > 4000) { g_screen = 0; g_screen_time = now; }  // back to Live after 4 s
+            sc = (g_screen == 1) ? 1 : 2;
         } else {
-            // Live screen: auto-switch to Striker after 6 s (if data exists)
-            if (strikerCount > 0 && now - g_screen_time > 6000) {
-                g_screen = 1;
-                g_screen_time = now;
-            }
-            drawLive(tft, g_data, g_peak);
+            if (strikerCount > 0 && now - g_screen_time > 6000) { g_screen = 1; g_screen_time = now; }  // to Striker after 6 s
+            sc = (g_screen == 1) ? 1 : 2;
+        }
+
+        // Render to the off-screen buffer and push in one transfer (no flicker).
+        // Falls back to direct drawing if the buffer could not be allocated.
+        if (g_useSprite) {
+            renderScreen(spr, sc);
+            spr.pushSprite(0, 0);
+        } else {
+            renderScreen(tft, sc);
         }
     }
 

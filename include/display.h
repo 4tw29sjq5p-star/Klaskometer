@@ -32,7 +32,12 @@ struct MagData { float bx, by, bz, magnitude, temp; };
 struct Striker { char name[24]; float magnitude; };
 
 // --- Helpers ---
-static void drawHeader(TFT_eSPI& tft, const char* title, uint8_t dotIdx, uint8_t dotTotal) {
+// All draw functions are templated on the graphics target (GFX) so they work on
+// both TFT_eSPI (direct to screen) and TFT_eSprite (off-screen buffer). This is
+// required because TFT_eSprite redefines fillRect/drawFastH/VLine non-virtually —
+// passing a sprite through a TFT_eSPI& would call the wrong (hardware) versions.
+template <class GFX>
+void drawHeader(GFX& tft, const char* title, uint8_t dotIdx, uint8_t dotTotal) {
     tft.fillRect(0, 0, LCD_W, HDR_H, COL_CARD);
     tft.drawFastHLine(0, HDR_H, LCD_W, COL_BORDER);
     tft.setTextColor(COL_PURPLE, COL_CARD);
@@ -45,8 +50,9 @@ static void drawHeader(TFT_eSPI& tft, const char* title, uint8_t dotIdx, uint8_t
     }
 }
 
-static void drawBar(TFT_eSPI& tft, int16_t x, int16_t y, int16_t w, int16_t h,
-                    float pct, uint16_t colFg, uint16_t colBg) {
+template <class GFX>
+void drawBar(GFX& tft, int16_t x, int16_t y, int16_t w, int16_t h,
+             float pct, uint16_t colFg, uint16_t colBg) {
     pct = pct < 0 ? 0 : (pct > 1 ? 1 : pct);
     int16_t filled = (int16_t)(w * pct);
     if (filled > 0) tft.fillRect(x,         y, filled,     h, colFg);
@@ -55,7 +61,8 @@ static void drawBar(TFT_eSPI& tft, int16_t x, int16_t y, int16_t w, int16_t h,
 
 // --- Screens ---
 
-inline void drawBoot(TFT_eSPI& tft) {
+template <class GFX>
+void drawBoot(GFX& tft) {
     tft.fillScreen(COL_BG);
     int16_t cx = LCD_W / 2, cy = LCD_H / 2 - 14;
     // Horseshoe magnet shape
@@ -80,7 +87,8 @@ inline void drawBoot(TFT_eSPI& tft) {
     delay(1800);
 }
 
-inline void drawWifiInfo(TFT_eSPI& tft, const char* ssid, const char* ip, const char* mdns) {
+template <class GFX>
+void drawWifiInfo(GFX& tft, const char* ssid, const char* ip, const char* mdns) {
     tft.fillScreen(COL_BG);
     drawHeader(tft, "Wi-Fi", 0, 1);
 
@@ -112,7 +120,8 @@ inline void drawWifiInfo(TFT_eSPI& tft, const char* ssid, const char* ip, const 
     tft.print("http://"); tft.print(mdns); tft.print(".local");
 }
 
-inline void drawError(TFT_eSPI& tft, const char* msg) {
+template <class GFX>
+void drawError(GFX& tft, const char* msg) {
     tft.fillScreen(COL_BG);
     tft.fillRect(PAD, CY + 10, LCD_W - PAD*2, 30, C(60, 10, 10));
     tft.drawRect(PAD, CY + 10, LCD_W - PAD*2, 30, COL_CORAL);
@@ -122,7 +131,8 @@ inline void drawError(TFT_eSPI& tft, const char* msg) {
     tft.print(msg);
 }
 
-inline void drawLive(TFT_eSPI& tft, const MagData& d, float peak) {
+template <class GFX>
+void drawLive(GFX& tft, const MagData& d, float peak) {
     tft.fillRect(0, CY, LCD_W, LCD_H - CY, COL_BG);
     drawHeader(tft, "Live", 0, 2);
 
@@ -222,7 +232,8 @@ inline void drawLive(TFT_eSPI& tft, const MagData& d, float peak) {
     tft.print("mT");
 }
 
-inline void drawStrikers(TFT_eSPI& tft, Striker* strikers, uint8_t count) {
+template <class GFX>
+void drawStrikers(GFX& tft, Striker* strikers, uint8_t count) {
     tft.fillRect(0, CY, LCD_W, LCD_H - CY, COL_BG);
     drawHeader(tft, "Striker", 1, 2);
 
@@ -271,7 +282,8 @@ inline void drawStrikers(TFT_eSPI& tft, Striker* strikers, uint8_t count) {
     }
 }
 
-inline void drawCalConfirm(TFT_eSPI& tft, float ox, float oy, float oz) {
+template <class GFX>
+void drawCalConfirm(GFX& tft, float ox, float oy, float oz) {
     tft.fillRect(0, CY, LCD_W, LCD_H - CY, COL_BG);
     drawHeader(tft, "Kalibrierung", 0, 1);
     tft.fillRect(PAD, CY + 6, LCD_W - PAD*2, 26, COL_CARD);
