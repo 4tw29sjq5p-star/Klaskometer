@@ -6,18 +6,13 @@
 #include <ArduinoJson.h>
 #include <TFT_eSPI.h>
 #include <SparkFun_TMAG5273_Arduino_Library.h>
-#include "display.h"   // MagData, Striker structs + all draw functions
-#include "web_ui.h"    // WEB_UI[] PROGMEM string
-#include "kalman.h"    // scalar 1-D Kalman filter
+#include "display.h"      // MagData, Striker structs + all draw functions
+#include "web_ui.h"       // WEB_UI[] PROGMEM string
+#include "mean_filter.h"  // simple moving-average filter
 
-// Kalman tuning:
-//   Q_MAG  – magnetic axes process noise (mT²/sample). Higher = faster tracking.
-//   R_MAG  – magnetic axes measurement noise (mT²). Matches observed sensor noise.
-//   Q_TEMP / R_TEMP – same for temperature (°C²).
-static constexpr float Q_MAG  = 0.0001f;
-static constexpr float R_MAG  = 0.001f;
-static constexpr float Q_TEMP = 0.001f;
-static constexpr float R_TEMP = 0.5f;
+// Moving-average window sizes (number of samples). Larger = smoother but slower.
+#define MAG_WINDOW   8   // magnetic axes
+#define TEMP_WINDOW  16  // temperature (changes slowly, smooth harder)
 
 #define AP_SSID     "KLASK-Tester"
 #define AP_PASSWORD "klask1234"
@@ -27,7 +22,8 @@ static constexpr float R_TEMP = 0.5f;
 
 // MagData and Striker are defined in display.h
 
-KalmanFilter kf_bx, kf_by, kf_bz, kf_temp;
+MeanFilter<MAG_WINDOW>  mf_bx, mf_by, mf_bz;
+MeanFilter<TEMP_WINDOW> mf_temp;
 
 MagData  g_data            = {};
 bool     g_sensor_ok       = false;
@@ -50,20 +46,25 @@ bool initSensor() {
         return false;
     sensor.setConvAvg(TMAG5273_X32_CONVERSION);  // 32x averaging reduces WiFi-induced noise
     delay(20);
-    // Seed filters with the first real measurement so they converge immediately
-    kf_bx.init(Q_MAG,  R_MAG,  sensor.getXData());
-    kf_by.init(Q_MAG,  R_MAG,  sensor.getYData());
-    kf_bz.init(Q_MAG,  R_MAG,  sensor.getZData());
-    kf_temp.init(Q_TEMP, R_TEMP, sensor.getTemp());
+    // Report chip variant: getDeviceID() 0 = ±40/±80mT part, 1 = ±133/±266mT part
+    uint8_t devId = sensor.getDeviceID();
+    Serial.printf("[SENSOR] DeviceID=%d  -> %s\n", devId,
+                  devId == 0 ? "±40/±80mT variant (max 80mT)"
+                             : "±133/±266mT variant (range can be extended)");
+    // Seed filters with the first real measurement so they start at the right level
+    mf_bx.reset(sensor.getXData());
+    mf_by.reset(sensor.getYData());
+    mf_bz.reset(sensor.getZData());
+    mf_temp.reset(sensor.getTemp());
     return true;
 }
 
 void readSensor() {
-    // Apply offsets then Kalman-filter each axis
-    float bx = kf_bx.update(sensor.getXData() - off_x);
-    float by = kf_by.update(sensor.getYData() - off_y);
-    float bz = kf_bz.update(sensor.getZData() - off_z);
-    float t  = kf_temp.update(sensor.getTemp());
+    // Apply offsets to the raw values, then smooth with a moving average
+    float bx = mf_bx.update(sensor.getXData() - off_x);
+    float by = mf_by.update(sensor.getYData() - off_y);
+    float bz = mf_bz.update(sensor.getZData() - off_z);
+    float t  = mf_temp.update(sensor.getTemp());
     float mag = sqrtf(bx*bx + by*by + bz*bz);
     g_data = { bx, by, bz, mag, t };
     if (mag > g_peak) g_peak = mag;
@@ -77,17 +78,17 @@ void calibrate() {
     g_peak = 0;
     g_cal_flash_until = millis() + 2000;
     // Offsets changed — restart filters at zero so they don't carry the old bias
-    kf_bx.init(Q_MAG, R_MAG, 0.0f);
-    kf_by.init(Q_MAG, R_MAG, 0.0f);
-    kf_bz.init(Q_MAG, R_MAG, 0.0f);
+    mf_bx.reset(0.0f);
+    mf_by.reset(0.0f);
+    mf_bz.reset(0.0f);
 }
 
 void resetCal() {
     off_x = 0; off_y = 0; off_z = 0;
     g_peak = 0;
-    kf_bx.init(Q_MAG, R_MAG, 0.0f);
-    kf_by.init(Q_MAG, R_MAG, 0.0f);
-    kf_bz.init(Q_MAG, R_MAG, 0.0f);
+    mf_bx.reset(0.0f);
+    mf_by.reset(0.0f);
+    mf_bz.reset(0.0f);
 }
 
 // ─── Striker management ────────────────────────────────────────────────────
